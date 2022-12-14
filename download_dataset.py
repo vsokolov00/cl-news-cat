@@ -6,8 +6,8 @@ import pandas as pd
 from pathlib import Path
 
 corpus_folder = Path("./corpus/")
-corpus_desc_file = Path("./sample.csv")
-df = pd.read_csv(corpus_desc_file, sep=';').head(10)
+corpus_desc_file = Path("./rural_india_corpus.csv")
+df = pd.read_csv(corpus_desc_file, sep=';')
 
 
 lang_prefix = {"English": "en", "Hindi": "hi", "Assamese": "as",
@@ -25,12 +25,13 @@ for index, row in tqdm(df.iterrows(), total=len(df)):
         os.mkdir(corpus_folder / str(index))
     except FileExistsError:
         pass
-
+    titles = []
     for lang in lang_prefix.values():
         if type(row[lang]) != float:
             url = row[lang]
             r = requests.get(url)
             soup = BeautifulSoup(r.content, 'html.parser')
+            titles.append(lang + soup.find('span', id="article-gallery-title").text)
             text_paragraphs = soup.find_all('div', class_="paragraph-block")
             with open(corpus_folder / str(index) / f"{lang}.txt", "w") as f:
                 for p in text_paragraphs:
@@ -40,4 +41,4 @@ for index, row in tqdm(df.iterrows(), total=len(df)):
             with open(corpus_folder / str(index) / f"labels.txt", "w") as f:
                 f.write('\n'.join(row['topics'].split(',')))
             with open(corpus_folder / str(index) / f"title.txt", "w") as f:
-                f.write(row['title'])
+                f.write(''.join(titles))

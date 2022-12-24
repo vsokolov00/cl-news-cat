@@ -6,27 +6,17 @@ import pandas as pd
 from pathlib import Path
 from collections import Counter
 import numpy as np
-
-
-def get_all_topics(df):
-    all_topics = set('')
-    index_by_topic = []
-    df['topics'].fillna('', inplace=True)
-    for topic in df['topics'].values:
-        index_by_topic.append(np.array([topic.strip() for topic in topic.split(',') if topic != '']))
-        all_topics.update(topic.split(','))
-
-    all_topics = [topic.strip() for topic in all_topics if topic != '']
-
-    return all_topics
+from utils import get_all_topics
 
 
 pwd = Path(os.getcwd())
 corpus_folder = Path(pwd / "corpus")
-corpus_desc_file = Path(pwd / "sample.csv")
+corpus_desc_file = Path(pwd / "rural_india_corpus.csv")
 
 df = pd.read_csv(corpus_desc_file, sep=';')
-df = df.head(5)
+
+df = df.sample(n=20, random_state=1413)
+
 
 lang_prefix = {"English": "en", "Hindi": "hi", "Assamese": "as",
  "Chhattisgarhi": "hne", "Gujarati": "gu", "Kannada": "kn", "Punjabi": "pa",
@@ -59,7 +49,10 @@ for index, row in tqdm(df.iterrows(), total=len(df)):
             url = row[lang]
             r = requests.get(url)
             soup = BeautifulSoup(r.content, 'html.parser')
-            date = soup.find('div', class_='row-1').find('span', itemprop='datePublished').text
+            try:
+                date = soup.find('div', class_='row-1').find('span', itemprop='datePublished').text
+            except AttributeError:
+                continue
             titles.append(soup.find('span', id="article-gallery-title").text.strip())
 
             text_paragraphs = soup.find_all('div', class_="paragraph-block")
@@ -72,11 +65,11 @@ for index, row in tqdm(df.iterrows(), total=len(df)):
             with open(corpus_folder / str(index) / f"labels.txt", "w") as f:
                 f.write('\n'.join(str(row['topics']).split(',')))
 
-        labels = row['topics'].split(',')
-        out_row = dict.fromkeys(get_all_topics(df), 0)
-        topics = {k: v+1 if k in labels else v for k, v in out_row.items()}
-        out_row = {'doc_id': index, 'path': corpus_folder / str(index) / f"{lang}.txt", 'lang': lang, 'year': date.split(',')[1].strip(), **topics}
-        all_rows.append(out_row)
+            labels = row['topics'].split(',')
+            out_row = dict.fromkeys(get_all_topics(df), 0)
+            topics = {k: v+1 if k in labels else v for k, v in out_row.items()}
+            out_row = {'doc_id': index, 'path': corpus_folder / str(index) / f"{lang}.txt", 'lang': lang, 'year': date.split(',')[1].strip(), **topics}
+            all_rows.append(out_row)
 
 out_df = pd.DataFrame(all_rows)
 

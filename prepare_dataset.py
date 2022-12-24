@@ -35,38 +35,41 @@ if not os.path.exists(corpus_folder):
     os.mkdir(corpus_folder)
 
 all_rows = []
-for index, row in tqdm(df.iterrows(), total=len(df)):
-    try:
-        os.mkdir(corpus_folder / str(index))
-    except FileExistsError:
-        continue
-    titles = []
-    for lang in lang_prefix.values():
-        if type(row[lang]) != float and type(row['topics']) != float:
-            url = row[lang]
-            r = requests.get(url)
-            soup = BeautifulSoup(r.content, 'html.parser')
-            try:
-                date = soup.find('div', class_='row-1').find('span', itemprop='datePublished').text
-            except AttributeError:
-                continue
-            titles.append(soup.find('span', id="article-gallery-title").text.strip())
+try:
+    for index, row in tqdm(df.iterrows(), total=len(df)):
+        try:
+            os.mkdir(corpus_folder / str(index))
+        except FileExistsError:
+            continue
+        titles = []
+        for lang in lang_prefix.values():
+            if type(row[lang]) != float and type(row['topics']) != float:
+                url = row[lang]
+                r = requests.get(url)
+                soup = BeautifulSoup(r.content, 'html.parser')
+                try:
+                    date = soup.find('div', class_='row-1').find('span', itemprop='datePublished').text
+                except AttributeError:
+                    continue
+                titles.append(soup.find('span', id="article-gallery-title").text.strip())
 
-            text_paragraphs = soup.find_all('div', class_="paragraph-block")
-            with open(corpus_folder / str(index) / f"{lang}.txt", "w") as f:
-                f.write(soup.find('span', id="article-gallery-title").text) # title
-                for p in text_paragraphs:
-                    text = p.find_all(text=True)
-                    for p in text:
-                        f.write(p.text)
-            with open(corpus_folder / str(index) / f"labels.txt", "w") as f:
-                f.write('\n'.join(str(row['topics']).split(',')))
+                text_paragraphs = soup.find_all('div', class_="paragraph-block")
+                with open(corpus_folder / str(index) / f"{lang}.txt", "w") as f:
+                    f.write(soup.find('span', id="article-gallery-title").text) # title
+                    for p in text_paragraphs:
+                        text = p.find_all(text=True)
+                        for p in text:
+                            f.write(p.text)
+                with open(corpus_folder / str(index) / f"labels.txt", "w") as f:
+                    f.write('\n'.join(str(row['topics']).split(',')))
 
-            labels = row['topics'].split(',')
-            out_row = dict.fromkeys(get_all_topics(), 0)
-            topics = {k: v+1 if k in labels else v for k, v in out_row.items()}
-            out_row = {'doc_id': index, 'path': corpus_folder / str(index) / f"{lang}.txt", 'lang': lang, 'year': date.split(',')[1].strip(), **topics}
-            all_rows.append(out_row)
+                labels = row['topics'].split(',')
+                out_row = dict.fromkeys(get_all_topics(), 0)
+                topics = {k: v+1 if k in labels else v for k, v in out_row.items()}
+                out_row = {'doc_id': index, 'path': corpus_folder / str(index) / f"{lang}.txt", 'lang': lang, 'year': date.split(',')[1].strip(), **topics}
+                all_rows.append(out_row)
+except Exception:
+    pass
 
 out_df = pd.DataFrame(all_rows)
 

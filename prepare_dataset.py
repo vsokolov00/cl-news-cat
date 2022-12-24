@@ -10,13 +10,10 @@ from utils import get_all_topics
 
 
 pwd = Path(os.getcwd())
-corpus_folder = Path(pwd / "corpus")
+corpus_folder = Path("/mnt/scratch/tmp/xsokol15/corpus")
 corpus_desc_file = Path(pwd / "rural_india_corpus.csv")
 
 df = pd.read_csv(corpus_desc_file, sep=';')
-
-df = df.sample(n=20, random_state=1413)
-
 
 lang_prefix = {"English": "en", "Hindi": "hi", "Assamese": "as",
  "Chhattisgarhi": "hne", "Gujarati": "gu", "Kannada": "kn", "Punjabi": "pa",
@@ -45,7 +42,7 @@ for index, row in tqdm(df.iterrows(), total=len(df)):
         continue
     titles = []
     for lang in lang_prefix.values():
-        if type(row[lang]) != float:
+        if type(row[lang]) != float and type(row['topics']) != float:
             url = row[lang]
             r = requests.get(url)
             soup = BeautifulSoup(r.content, 'html.parser')
@@ -66,7 +63,7 @@ for index, row in tqdm(df.iterrows(), total=len(df)):
                 f.write('\n'.join(str(row['topics']).split(',')))
 
             labels = row['topics'].split(',')
-            out_row = dict.fromkeys(get_all_topics(df), 0)
+            out_row = dict.fromkeys(get_all_topics(), 0)
             topics = {k: v+1 if k in labels else v for k, v in out_row.items()}
             out_row = {'doc_id': index, 'path': corpus_folder / str(index) / f"{lang}.txt", 'lang': lang, 'year': date.split(',')[1].strip(), **topics}
             all_rows.append(out_row)

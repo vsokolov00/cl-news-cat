@@ -8,6 +8,16 @@ from collections import Counter
 import numpy as np
 from utils import get_all_topics
 
+def save_dataset(all_rows, pwd):
+    out_df = pd.DataFrame(all_rows)
+
+    if os.path.exists(pwd / "data.csv"):
+        df = pd.read_csv(pwd / "data.csv", sep=';')
+        df_new = pd.concat([df, out_df], ignore_index=False)
+        df_new.to_csv(pwd / "data.csv", sep=';', index=False)
+    else:
+        out_df.to_csv(pwd / "data.csv", sep=';', index=False)
+
 
 pwd = Path(os.getcwd())
 corpus_folder = Path("/mnt/scratch/tmp/xsokol15/corpus")
@@ -68,14 +78,10 @@ try:
                 topics = {k: v+1 if k in labels else v for k, v in out_row.items()}
                 out_row = {'doc_id': index, 'path': corpus_folder / str(index) / f"{lang}.txt", 'lang': lang, 'year': date.split(',')[1].strip(), **topics}
                 all_rows.append(out_row)
+                if index % 100 == 0:
+                    save_dataset(all_rows, pwd)
+                    all_rows = []
 except Exception:
     pass
 
-out_df = pd.DataFrame(all_rows)
-
-if os.path.exists(pwd / "data.csv"):
-    df = pd.read_csv(pwd / "data.csv", sep=';')
-    df_new = pd.concat([df, out_df], ignore_index=False)
-    df_new.to_csv(pwd / "data.csv", sep=';', index=False)
-else:
-    out_df.to_csv(pwd / "data.csv", sep=';', index=False)
+save_dataset(all_rows, pwd)

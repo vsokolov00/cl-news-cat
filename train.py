@@ -6,22 +6,22 @@ from sentence_transformers import SentenceTransformer
 from utils import get_all_topics
 from tqdm import tqdm
 import wandb
-import matplotlib.pyplot as plt
 
 wandb.login()
-
-df = pd.read_csv('data.csv', sep=';')
 
 device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
 LaBSE = SentenceTransformer('LaBSE', device=device)
 
+topics_n = len(get_all_topics())
+topics_n = 19
+
 config = dict(
     hidden_size=512,
-    epochs=10,
-    topics=19,
-    train_batch_size=4,
-    test_batch_size=2,
-    learning_rate=0.001,
+    epochs=30,
+    topics=topics_n,
+    train_batch_size=64,
+    test_batch_size=32,
+    learning_rate=0.0001,
     data_desc_file="data.csv")
 
 
@@ -73,8 +73,8 @@ def train(classifier, train_loader, validation_loader, criterion, optimizer, epo
         # Training
         batch_ct = 0
         with tqdm(train_loader, unit="batch") as tepoch:
-            batch_ct += 1
             for local_batch, local_labels in tepoch:
+                batch_ct += 1
                 tepoch.set_description(f"Epoch {epoch}")
                 # Transfer to GPU
                 local_batch, local_labels = local_batch.to(device), local_labels.to(device)
@@ -89,10 +89,8 @@ def train(classifier, train_loader, validation_loader, criterion, optimizer, epo
                 optimizer.step()
 
                 tepoch.set_postfix(loss=avg_loss / batch_ct)
-
                 # Report metrics every 25th batch
                 if ((batch_ct + 1) % 3) == 0:
-                    print("Wandb logging")
                     wandb.log({"epoch": epoch, "loss": loss}, step=seen_ct)
             #train_losses.append(avg_loss / len(train_loader))
 
@@ -114,7 +112,6 @@ def validate(model, loader, criterion=nn.BCELoss()):
             total_loss += loss.item()
 
             predictions = (y_hat>0.5).float()
-            
             total_correct += torch.sum(torch.all(local_labels == predictions, dim=1))
 
         avg_vloss = total_loss / (len(loader))
@@ -135,9 +132,10 @@ def make(config):
     classifier = RuralIndiaModel(input_size=768, n_topics=config.topics, hidden_size=config.hidden_size).to(device)
 
     # Make the loss and optimizer
-    optimizer = torch.optim.Adam(classifier.parameters(), lr=0.001)
+    optimizer = torch.optim.Adam(classifier.parameters(), lr=config.learning_rate)
     criterion = nn.BCEWithLogitsLoss()
-    
+    #scheduler = torch.optim.lr_scheduler.ExponentialLR(optimizer, gamma=0.95)
+
     return classifier, train_loader, validation_loader, test_loader, criterion, optimizer
 
 def model_pipeline(hyperparameters):

@@ -13,7 +13,7 @@ import argparse
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-#wandb.login()
+wandb.login()
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -201,14 +201,29 @@ def train_logistic_reg(data_desc_file):
             continue
     print("Fitted")
     
+    predictions = []
     total_score = 0
     inputs, classes = next(iter(test_loader))
     for i, model in enumerate(log_reg_models):
         if model is not None:
-            total_score += model.score(inputs, classes[:, i].tolist())
+            prediction = model.predict(inputs)
+            predictions.append(prediction)
+            #total_score += model.score(inputs, classes[:, i].tolist())
         else:
+            predictions.append(np.zeros(classes.shape[0]))
             continue
-    print(f"Accuracy: {total_score / (len(log_reg_models) - log_reg_models.count(None))}")
+    predictions = torch.from_numpy(np.array(predictions).T)
+    total_tp = torch.sum(torch.logical_and(classes, predictions))
+    fp_tmp = torch.sub(predictions, classes)
+    fp_tmp[fp_tmp < 0] = 0
+    total_fp = torch.sum(fp_tmp)
+    total_fn = torch.sum(torch.logical_and(torch.logical_xor(predictions, classes), classes))
+
+    recall = total_tp.item() / (total_tp.item() + total_fn.item())
+    precision = total_tp.item() / (total_tp.item() + total_fp.item())
+    f1 = 2 * precision * recall / (precision + recall)
+
+    print(f"Precision: {precision}, Recall: {recall}, F1: {f1}")
 
 def make(config):
     # Make the data

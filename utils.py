@@ -26,6 +26,8 @@ def precompute_doc_embeddings(data_desc_fil='data.csv', out_df='ready_df.csv', s
     :param sep: separator in the dataset description file
     :return: embeddings for all documents in the dataset
     """
+    if os.path.exists(out_df):
+        return os.path.abspath(out_df)
 
     df = pd.read_csv(data_desc_fil, sep=';').head()
 
@@ -51,4 +53,3 @@ def precompute_doc_embeddings(data_desc_fil='data.csv', out_df='ready_df.csv', s
     df_out.to_csv(out_df, sep=';')
 
     return os.path.abspath(out_df)
-

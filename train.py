@@ -3,7 +3,7 @@ from torch import nn
 from torch.utils.data import Dataset, DataLoader
 from sklearn.linear_model import LogisticRegressionCV
 import pandas as pd
-from utils import get_all_topics
+from utils import get_all_topics, precompute_doc_embeddings
 from tqdm import tqdm
 from transformers import AutoTokenizer, AutoModel
 import numpy as np
@@ -52,7 +52,7 @@ def custom_collate(data):
 class RuralIndiaDataset(Dataset):
     def __init__(self, data_desc_file, partition):
         super().__init__()
-        tmp_df = pd.read_csv(data_desc_file)
+        tmp_df = pd.read_csv(precompute_doc_embeddings(), sep=';')
         if partition == 'train':
             self.df = tmp_df[tmp_df['year'] > 2017]
         elif partition == 'test':
@@ -65,13 +65,15 @@ class RuralIndiaDataset(Dataset):
         return len(self.df)
 
     def __getitem__(self, idx):
-        text = self.df.iloc[idx].loc['text']
-        topics = self.df.iloc[idx, 5:-1].tolist()
+        #text = self.df.iloc[idx].loc['text']
+        test = self.df.iloc[idx].loc['embeddings'].replace('[', '').replace(']', '')
+        embedding = torch.tensor(np.fromstring(test, dtype=float, sep=','), dtype=torch.float)
+        topics = self.df.iloc[idx, 5:-2].tolist()
 
-        tokenized = self.tokenizer(text, padding=True, truncation=True, max_length=512, return_tensors='pt')["input_ids"].squeeze(0)
+        #tokenized = self.tokenizer(text, padding=True, truncation=True, max_length=512, return_tensors='pt')["input_ids"].squeeze(0)
         #embedding = torch.tensor(sentence_model.encode([text])[0])
 
-        return tokenized, topics
+        return embedding, topics
 
 
 class RuralIndiaModel(nn.Module):
@@ -92,8 +94,8 @@ class RuralIndiaModel(nn.Module):
         self.sigmoid = nn.Sigmoid()
 
     def forward(self, x):
-        with torch.set_grad_enabled(False):
-            x = self.embedding(x).pooler_output
+        #with torch.set_grad_enabled(False):
+        #    x = self.embedding(x).pooler_output
         x = self.fc_in(x)
         x = self.relu(x)
         for f in self.fully_connected:

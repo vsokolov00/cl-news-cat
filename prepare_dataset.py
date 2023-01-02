@@ -4,9 +4,8 @@ import os
 from tqdm import tqdm
 import pandas as pd
 from pathlib import Path
-from collections import Counter
-import numpy as np
 from utils import get_all_topics
+import argparse
 
 def save_dataset(all_rows, pwd):
     out_df = pd.DataFrame(all_rows)
@@ -19,11 +18,18 @@ def save_dataset(all_rows, pwd):
         out_df.to_csv(pwd / "data.csv", sep=';', index=False)
 
 
+argparser = argparse.ArgumentParser()
+argparser.add_argument('--corpus', type=str, default="/mnt/scratch/tmp/xsokol15/corpus")
+args = argparser.parse_args()
+
 pwd = Path(os.getcwd())
-corpus_folder = Path("/mnt/scratch/tmp/xsokol15/corpus")
+
+corpus_folder = Path(os.path.abspath(args.corpus))
 corpus_desc_file = Path(pwd / "rural_india_corpus.csv")
 
 df = pd.read_csv(corpus_desc_file, sep=';')
+
+df = df.sample(n=10)
 
 lang_prefix = {"English": "en", "Hindi": "hi", "Assamese": "as",
  "Chhattisgarhi": "hne", "Gujarati": "gu", "Kannada": "kn", "Punjabi": "pa",

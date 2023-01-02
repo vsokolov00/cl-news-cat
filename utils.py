@@ -48,7 +48,6 @@ def precompute_doc_embeddings(data_desc_fil='data.csv', out_df='ready_df.csv', s
     model.max_seq_length = 512
 
     embeddings = model.encode(df_out['text'].values)
-    print(type(embeddings), len(embeddings))
     df_out['embeddings'] = embeddings.tolist()
 
     df_out.to_csv(out_df, sep=';')

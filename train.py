@@ -9,10 +9,11 @@ from transformers import AutoTokenizer, AutoModel
 import numpy as np
 import wandb
 import os
+import argparse
 
 os.environ["TOKENIZERS_PARALLELISM"] = "false"
 
-wandb.login()
+#wandb.login()
 
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
 
@@ -30,14 +31,14 @@ config = dict(
     hidden_size=256,
     epochs=5,
     topics=topics_n,
-    train_batch_size=128,
-    test_batch_size=64,
+    train_batch_size=1024,
+    test_batch_size=1024,
     learning_rate=1e-2,
     weight_decay=1e-3,
     dropout=0.4,
     num_workers=0,
     wandb_run_desc="128-batchsize",
-    data_desc_file="dataset_frame.csv")
+    data_desc_file="data.csv")
 
 
 from torch.nn.utils.rnn import pad_sequence #(1)
@@ -72,7 +73,6 @@ class RuralIndiaDataset(Dataset):
 
         #tokenized = self.tokenizer(text, padding=True, truncation=True, max_length=512, return_tensors='pt')["input_ids"].squeeze(0)
         #embedding = torch.tensor(sentence_model.encode([text])[0])
-
         return embedding, topics
 
 
@@ -180,20 +180,35 @@ def validate(model, loader, criterion):
         print(f"Validation loss: {avg_vloss}, Accuracy (EMR): {total_correct / len(loader.dataset)}, Precision: {precision}, Recall: {recall}")
         return avg_vloss, precision, recall, f1
 
-def train_logistic_reg(train_loader, test_loader):
+def train_logistic_reg(data_desc_file):
+    train_dataset = RuralIndiaDataset(data_desc_file, partition='train')
+    test_dataset = RuralIndiaDataset(data_desc_file, partition='test')
+
+    train_loader = DataLoader(train_dataset, batch_size=config['train_batch_size'], num_workers=config['num_workers'], collate_fn=custom_collate, shuffle=True)
+    test_loader = DataLoader(test_dataset, batch_size=config['test_batch_size'], num_workers=config['num_workers'], collate_fn=custom_collate, shuffle=True)
+
     inputs, classes = next(iter(train_loader))
-    print("Before: ", classes.shape, type(classes))
+    log_reg_models = []
 
-    classes = np.array(classes, dtype=int)
-    print("Aftet NP", classes.shape, type(classes))
-    classes = np.packbits(classes, axis=0)
-    print(classes, len(classes))
-
-    clf = LogisticRegressionCV(cv=5, random_state=123, multi_class='multinomial')
-
-    clf.fit(inputs, classes)
-
+    for i in range(classes.shape[1]):
+        labels = classes[:, i].tolist()
+        try:
+            clf = LogisticRegressionCV(cv=5, random_state=123)
+            clf.fit(inputs, labels)
+            log_reg_models.append(clf)
+        except ValueError:
+            log_reg_models.append(None)
+            continue
     print("Fitted")
+    
+    total_score = 0
+    inputs, classes = next(iter(test_loader))
+    for i, model in enumerate(log_reg_models):
+        if model is not None:
+            total_score += model.score(inputs, classes[:, i].tolist())
+        else:
+            continue
+    print(f"Accuracy: {total_score / (len(log_reg_models) - log_reg_models.count(None))}")
 
 def make(config):
     # Make the data
@@ -225,11 +240,16 @@ def model_pipeline(hyperparameters):
 
         classifier, train_loader, validation_loader, test_loader, criterion, optimizer, scheduler = make(config)
         train(classifier, train_loader, validation_loader, criterion, optimizer, scheduler, config.epochs)
-        #train_logistic_reg(train_loader, test_loader)
 
     return classifier
 
 
 if __name__ == '__main__':
-    print("Training model...")
-    classifier = model_pipeline(config)
+    argparse = argparse.ArgumentParser()
+    argparse.add_argument('-b', '--baseline', action='store_true')
+    args = argparse.parse_args()
+
+    if args.baseline:
+        train_logistic_reg(config['data_desc_file'])
+    else:
+        classifier = model_pipeline(config)

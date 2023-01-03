@@ -75,6 +75,10 @@ class RuralIndiaDataset(Dataset):
         #embedding = torch.tensor(sentence_model.encode([text])[0])
         return embedding, topics
 
+    def get_pos_weight(self):
+        print((self.df.iloc[:, 5:-2]).to_string())
+        return torch.tensor((self.df.iloc[:, 5:-2].sum(axis=0).values / len(self.df))**(-1), dtype=torch.float)
+
 
 class RuralIndiaModel(nn.Module):
     def __init__(self, input_size, n_topics, hidden_size, layers, dropout):
@@ -183,6 +187,10 @@ def validate(model, loader, criterion):
 def train_logistic_reg(data_desc_file):
     train_dataset = RuralIndiaDataset(data_desc_file, partition='train')
     test_dataset = RuralIndiaDataset(data_desc_file, partition='test')
+
+    pos_weight = train_dataset.get_pos_weight()
+    print(pos_weight)
+    exit()
 
     train_loader = DataLoader(train_dataset, batch_size=config['train_batch_size'], num_workers=config['num_workers'], collate_fn=custom_collate, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=config['test_batch_size'], num_workers=config['num_workers'], collate_fn=custom_collate, shuffle=True)

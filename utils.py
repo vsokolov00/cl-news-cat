@@ -1,6 +1,10 @@
 import numpy as np
 import pandas as pd
 import os
+import re
+import textwrap
+from tqdm import tqdm
+
 
 from sentence_transformers import SentenceTransformer
 
@@ -18,7 +22,7 @@ def get_all_topics():
 
     return all_topics
 
-def precompute_doc_embeddings(data_desc_fil='data.csv', out_df='ready_df.csv', sep=';'):
+def precompute_doc_embeddings(data_desc_fil='data.csv', out_df='ready_df.csv', sep=';', by_paragraph=True):
     """
     Precompute embeddings for all documents in the dataset.
     
@@ -47,8 +51,20 @@ def precompute_doc_embeddings(data_desc_fil='data.csv', out_df='ready_df.csv', s
     model = SentenceTransformer('sentence-transformers/LaBSE')
     model.max_seq_length = 512
 
-    embeddings = model.encode(df_out['text'].values)
-    df_out['embeddings'] = embeddings.tolist()
+    print("Encoding documents...")
+    if not by_paragraph:
+        embeddings = model.encode(df_out['text'].values)
+        df_out['embeddings'] = embeddings.tolist()
+    else:
+        embeddings = []
+        for doc in tqdm(df_out['text'].values, unit='docs'):
+            doc = re.sub(r'\s+', ' ', doc)
+            paragraphs = textwrap.wrap(doc, 512, break_long_words=False)
+            
+            embeddings_tmp = model.encode(paragraphs)
+            embedding = np.mean(embeddings_tmp, axis=0)
+            embeddings.append(embedding.tolist())
+        df_out['embeddings'] = embeddings
 
     df_out.to_csv(out_df, sep=';')
 

@@ -24,20 +24,19 @@ if 'supergpu' in os.uname()[1]:
 
 # sentence_model = SentenceTransformer(pretrained_model, device=device)
 
-topics_n = len(get_all_topics())
-
+topics_n = len(get_all_topics()) - 1
 config = dict(
-    hidden_layers=2,
-    hidden_size=256,
-    epochs=5,
+    hidden_layers=3,
+    hidden_size=512,
+    epochs=11,
     topics=topics_n,
-    train_batch_size=1024,
-    test_batch_size=1024,
+    train_batch_size=128,
+    test_batch_size=64,
     learning_rate=1e-2,
     weight_decay=1e-3,
     dropout=0.4,
     num_workers=0,
-    wandb_run_desc="128-batchsize",
+    wandb_run_desc="xlm",
     data_desc_file="data.csv")
 
 
@@ -54,13 +53,13 @@ class RuralIndiaDataset(Dataset):
     def __init__(self, data_desc_file, partition):
         super().__init__()
         tmp_df = pd.read_csv(precompute_doc_embeddings(), sep=';')
+        tmp_df.drop(columns=['Invisible Women'], inplace=True)
         if partition == 'train':
             self.df = tmp_df[tmp_df['year'] > 2017]
         elif partition == 'test':
             self.df = tmp_df[tmp_df['year'] < 2018]
         #self.df = self.df.sample(frac=0.5, replace=False, random_state=123)
 
-        self.tokenizer = AutoTokenizer.from_pretrained(pretrained_model, do_lower_case=False)
 
     def __len__(self):
         return len(self.df)
@@ -76,14 +75,17 @@ class RuralIndiaDataset(Dataset):
         return embedding, topics
 
     def get_pos_weight(self):
-        print((self.df.iloc[:, 5:-2]).to_string())
+        tmp = torch.tensor(self.df.iloc[:, 5:-2].sum(axis=0).values, dtype=torch.float)
+        tmp_col = self.df.columns[5:-2]
+
+        for i in range(len(tmp)):
+            print(f'Category: {tmp_col[i]} = {tmp[i]}')
         return torch.tensor((self.df.iloc[:, 5:-2].sum(axis=0).values / len(self.df))**(-1), dtype=torch.float)
 
 
 class RuralIndiaModel(nn.Module):
     def __init__(self, input_size, n_topics, hidden_size, layers, dropout):
         super().__init__()
-        self.embedding = AutoModel.from_pretrained(pretrained_model)
         self.fc_in = nn.Linear(input_size, hidden_size, bias=True)
         self.do1 = nn.Dropout(dropout)
         self.relu = nn.ReLU()
@@ -130,7 +132,7 @@ def train(classifier, train_loader, validation_loader, criterion, optimizer, sch
                 seen_ct += len(local_batch)
                 
                 y_hat = classifier(local_batch)
-
+                
                 loss = criterion(y_hat, local_labels)
                 avg_loss += loss.item()
 
@@ -142,9 +144,9 @@ def train(classifier, train_loader, validation_loader, criterion, optimizer, sch
                 
                 if ((batch_ct + 1) % 25) == 0:
                     wandb.log({"Training loss": avg_loss / batch_ct}, step=seen_ct)
-
-            vloss, prec, recall, f1 = validate(classifier, validation_loader, criterion=criterion)
-            wandb.log({"Validation loss": vloss, "Precision": prec, "Recall": recall, "F1": f1})
+            if epoch % 5 == 0:
+                vloss, prec, recall, f1 = validate(classifier, validation_loader, criterion=criterion)
+                wandb.log({"Validation loss": vloss, "Precision": prec, "Recall": recall, "F1": f1})
             scheduler.step(vloss)
 
 
@@ -162,7 +164,7 @@ def validate(model, loader, criterion):
             local_batch, local_labels = local_batch.to(device), local_labels.to(device)
 
             y_hat = model(local_batch)
-
+                
             loss = criterion(y_hat, local_labels.float())
             total_loss += loss.item()
 
@@ -181,16 +183,46 @@ def validate(model, loader, criterion):
         recall = total_tp.item() / (total_tp.item() + total_fn.item())
         precision = total_tp.item() / (total_tp.item() + total_fp.item())
         f1 = 2 * precision * recall / (precision + recall)
+        wandb.log({"Test_Precision": precision, "Test_Recall": recall, "Test_F1": f1})
         print(f"Validation loss: {avg_vloss}, Accuracy (EMR): {total_correct / len(loader.dataset)}, Precision: {precision}, Recall: {recall}")
         return avg_vloss, precision, recall, f1
+
+
+def test(model, loader):
+    total_loss = 0
+    total_correct = 0
+    with torch.set_grad_enabled(False):
+        total_tp = 0
+        total_fp = 0
+        total_fn = 0
+        total = 0
+
+        for local_batch, local_labels in loader:
+            # Transfer to GPU
+            local_batch, local_labels = local_batch.to(device), local_labels.to(device)
+
+            y_hat = model(local_batch)
+                
+            predictions = (y_hat>0.5).float()
+
+            total_tp += torch.sum(torch.logical_and(local_labels, predictions))
+            fp_tmp = torch.sub(predictions, local_labels)
+            fp_tmp[fp_tmp < 0] = 0
+            total_fp += torch.sum(fp_tmp)
+            total += torch.numel(local_labels)
+            total_fn += torch.sum(torch.logical_and(torch.logical_xor(predictions, local_labels), local_labels))
+
+            total_correct += torch.sum(torch.all(local_labels == predictions, dim=1))
+
+        recall = total_tp.item() / (total_tp.item() + total_fn.item())
+        precision = total_tp.item() / (total_tp.item() + total_fp.item())
+        f1 = 2 * precision * recall / (precision + recall)
+        print(f"TEST:  Accuracy (EMR): {total_correct / len(loader.dataset)}, Precision: {precision}, Recall: {recall}")
+        return precision, recall, f1
 
 def train_logistic_reg(data_desc_file):
     train_dataset = RuralIndiaDataset(data_desc_file, partition='train')
     test_dataset = RuralIndiaDataset(data_desc_file, partition='test')
-
-    pos_weight = train_dataset.get_pos_weight()
-    print(pos_weight)
-    exit()
 
     train_loader = DataLoader(train_dataset, batch_size=config['train_batch_size'], num_workers=config['num_workers'], collate_fn=custom_collate, shuffle=True)
     test_loader = DataLoader(test_dataset, batch_size=config['test_batch_size'], num_workers=config['num_workers'], collate_fn=custom_collate, shuffle=True)
@@ -248,6 +280,8 @@ def make(config):
 
     # Make the loss and optimizer
     optimizer = torch.optim.Adam(classifier.parameters(), lr=config.learning_rate, weight_decay=config.weight_decay)
+    pos_weight = dataset.get_pos_weight()
+    pos_weight = pos_weight.to(device)
     criterion = nn.BCEWithLogitsLoss()
     scheduler = torch.optim.lr_scheduler.ReduceLROnPlateau(optimizer, mode='min', factor=0.1, patience=0, threshold=0.0001, threshold_mode='abs', verbose=True)
 
@@ -263,6 +297,8 @@ def model_pipeline(hyperparameters):
 
         classifier, train_loader, validation_loader, test_loader, criterion, optimizer, scheduler = make(config)
         train(classifier, train_loader, validation_loader, criterion, optimizer, scheduler, config.epochs)
+        test(classifier, test_loader)
+
 
     return classifier
 

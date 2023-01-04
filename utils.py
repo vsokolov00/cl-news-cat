@@ -48,7 +48,8 @@ def precompute_doc_embeddings(data_desc_fil='data.csv', out_df='ready_df.csv', s
     df_out = df.copy()
     df_out['text'] = docs
     
-    model = SentenceTransformer('sentence-transformers/LaBSE')
+    #model = SentenceTransformer('sentence-transformers/LaBSE')  # LaBSE for pre-embedding
+    model = SentenceTransformer('/mnt/scratch/tmp/xsokol15/models/sentence-transformers_stsb-xlm-r-multilingual', device='cuda')
     model.max_seq_length = 512
 
     print("Encoding documents...")

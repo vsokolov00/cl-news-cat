@@ -1,6 +1,6 @@
 # Cross-lingual multi-label article categorization
 
-## All statistics of the dataset is depicted in the `stats.ipynb` file.
+## All statistics of the dataset are collected in the `stats.ipynb` file.
 
 ## Step-by-step
 1. Run the `scrape.py` script to update the `rural_india_corpus.csv` or use the pre-scraped version of the CSV file provided in this repo. The pre-scraped version may not contain all of the available articles.
